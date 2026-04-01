@@ -1,179 +1,741 @@
-<!DOCTYPE html><html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title> AQI Monitoring using IoT & Embedded system Dashboard</title>  <!-- Firebase -->  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>  <!-- Chart -->  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <!-- Map -->  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AQI Monitor — IoT Dashboard</title>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;700;900&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg:       #060d1a;
+      --panel:    #0b1628;
+      --border:   #1a3a5c;
+      --accent:   #00e5ff;
+      --accent2:  #ff4d6d;
+      --good:     #00e676;
+      --warn:     #ffea00;
+      --danger:   #ff1744;
+      --text:     #ccd9f0;
+      --muted:    #4a6080;
+      --mono:     'Share Tech Mono', monospace;
+      --sans:     'Exo 2', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      margin: 0;
-      font-family: Arial;
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      color: white;
-      text-align: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
     }
 
-    h1 {
-      padding: 15px;
+    /* ── Animated grid background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    .container {
+    /* ── HEADER ── */
+    header {
+      position: relative; z-index: 1;
       display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11,22,40,.9);
+      backdrop-filter: blur(12px);
     }
 
-    .card {
-      background: #1e293b;
-      margin: 10px;
-      padding: 20px;
-      border-radius: 15px;
-      width: 180px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .logo-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #00e5ff22, #00e5ff55);
+      border: 1px solid var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .logo h1 {
+      font-size: 18px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: #fff;
+    }
+    .logo p {
+      font-size: 11px; color: var(--muted);
+      letter-spacing: 3px; text-transform: uppercase;
+      font-family: var(--mono);
     }
 
-    .aqi-card {
-      width: 260px;
-      font-size: 22px;
+    .header-right {
+      display: flex; align-items: center; gap: 20px;
+    }
+    .live-badge {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono); font-size: 12px; color: var(--good);
+      padding: 6px 14px; border-radius: 20px;
+      border: 1px solid var(--good);
+      background: rgba(0,230,118,.08);
+    }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--good);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: .4; transform: scale(.7); }
     }
 
-    .value {
-      font-size: 26px;
-      font-weight: bold;
+    .timestamp {
+      font-family: var(--mono); font-size: 12px; color: var(--muted);
     }
 
-    .good { color: #22c55e; }
-    .warning { color: #facc15; }
-    .danger { color: #ef4444; }
-
-    #alertBox {
+    /* ── ALERT BAR ── */
+    #alertBar {
       display: none;
-      background: red;
-      padding: 10px;
-      margin: 10px;
-      font-weight: bold;
+      position: relative; z-index: 10;
+      background: linear-gradient(90deg, #ff1744, #ff6d00, #ff1744);
+      background-size: 200% 100%;
+      animation: alertSlide 2s linear infinite;
+      color: #fff; font-weight: 700; letter-spacing: 2px;
+      text-align: center; padding: 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+    @keyframes alertSlide {
+      0% { background-position: 0% 0; }
+      100% { background-position: 200% 0; }
     }
 
-    canvas {
-      max-width: 90%;
-      margin-top: 20px;
+    /* ── MAIN LAYOUT ── */
+    main {
+      position: relative; z-index: 1;
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── PANELS ── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: .5;
+    }
+
+    .panel-title {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 16px;
+      font-family: var(--mono);
+    }
+
+    /* ── AQI GAUGE PANEL ── */
+    .aqi-panel {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    .gauge-wrap {
+      position: relative; width: 220px; height: 220px; margin: 12px auto;
+    }
+    #gaugeCanvas { width: 100%; height: 100%; }
+
+    .gauge-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .aqi-number {
+      font-size: 56px; font-weight: 900;
+      line-height: 1; color: #fff;
+      font-family: var(--sans);
+      transition: color .5s;
+    }
+    .aqi-label-text {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); margin-top: 4px; letter-spacing: 2px;
+    }
+    .aqi-status-badge {
+      margin-top: 12px;
+      padding: 8px 28px; border-radius: 30px;
+      font-weight: 700; font-size: 16px; letter-spacing: 3px;
+      text-transform: uppercase; border: 1.5px solid;
+      transition: all .5s;
+    }
+
+    /* AQI progress bar */
+    .aqi-bar-wrap {
+      width: 100%; margin-top: 20px;
+    }
+    .aqi-bar-labels {
+      display: flex; justify-content: space-between;
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .aqi-bar-track {
+      width: 100%; height: 10px; border-radius: 6px;
+      background: linear-gradient(90deg, #00e676, #ffea00 40%, #ff9100 65%, #ff1744);
+      position: relative;
+      border: 1px solid var(--border);
+    }
+    .aqi-bar-thumb {
+      position: absolute; top: 50%; transform: translateY(-50%) translateX(-50%);
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #fff; border: 3px solid var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      transition: left .6s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ── AQI HEALTH INDICATOR ── */
+    .health-indicator {
+      width: 100%;
+      margin-top: 18px;
+      border-radius: 12px;
+      padding: 14px 16px;
+      border: 1.5px solid var(--border);
+      background: rgba(255,255,255,.03);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: all .5s;
+    }
+    .health-face {
+      font-size: 36px;
+      line-height: 1;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 8px currentColor);
+    }
+    .health-text { flex: 1; text-align: left; }
+    .health-verdict {
+      font-size: 15px; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 2px;
+      transition: color .5s;
+    }
+    .health-desc {
+      font-size: 11px; color: var(--muted);
+      margin-top: 3px; line-height: 1.5;
+      font-family: var(--mono);
+    }
+    .health-range {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--muted); margin-top: 6px;
+      padding: 3px 8px; border-radius: 4px;
+      border: 1px solid var(--border);
+      display: inline-block;
+    }
+
+    /* ── SENSOR GRID ── */
+    .sensor-grid {
+      grid-column: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .sensor-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 14px;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: border-color .3s;
+    }
+    .sensor-card:hover { border-color: var(--accent); }
+
+    .sensor-icon { font-size: 22px; }
+    .sensor-name {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--muted); letter-spacing: 2px; text-transform: uppercase;
+    }
+    .sensor-value {
+      font-size: 22px; font-weight: 700; color: #fff;
+      font-family: var(--sans);
+    }
+    .sensor-unit {
+      font-size: 11px; color: var(--muted); font-family: var(--mono);
+    }
+
+    /* ── CHART PANEL ── */
+    .chart-panel {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .chart-controls {
+      display: flex; gap: 10px; margin-bottom: 16px;
+    }
+    .chart-btn {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+      padding: 5px 14px; border-radius: 6px; cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      transition: all .2s;
+    }
+    .chart-btn.active, .chart-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,.08);
+    }
+    .chart-wrap { position: relative; height: 240px; }
+
+    /* ── MAP + MULTI-CHART ROW ── */
+    .bottom-row {
+      grid-column: 2;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
     }
 
     #map {
-      height: 300px;
-      margin: 20px;
+      height: 240px;
       border-radius: 10px;
+      border: 1px solid var(--border);
+      filter: hue-rotate(200deg) saturate(.6) brightness(.7);
     }
 
-  </style></head><body><h1>🌍 AQI Monitoring using IoT & Embedded system  Dashboard</h1><div id="alertBox">⚠️ Air Quality Dangerous!</div><div class="container">  <div class="card aqi-card">
-    <h2>AQI</h2>
-    <div id="aqi" class="value">--</div>
-    <div id="status">--</div>
-    <progress id="aqiBar" value="0" max="500"></progress>
-  </div>  <div class="card">
-    <h3>🌡 Temp</h3>
-    <div id="temp" class="value">--</div>
-  </div>  <div class="card">
-    <h3>💧 Humidity</h3>
-    <div id="hum" class="value">--</div>
-  </div>  <div class="card">
-    <h3>🌪 Pressure</h3>
-    <div id="pres" class="value">--</div>
-  </div>  <div class="card">
-    <h3>🌬 CO₂</h3>
-    <div id="co2" class="value">--</div>
-  </div></div><!-- Chart --><canvas id="aqiChart"></canvas>
+    /* Responsive */
+    @media(max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .aqi-panel, .chart-panel, .bottom-row {
+        grid-column: 1; grid-row: auto;
+      }
+      .bottom-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
 
-<!-- Map --><div id="map"></div><script>
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌍</div>
+    <div>
+      <h1>AQI Monitor</h1>
+      <p>IoT &amp; Embedded Systems Dashboard</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="timestamp" id="clockEl">--:--:--</div>
+  </div>
+</header>
 
-// 🔥 PASTE YOUR FIREBASE CONFIG HERE
+<div id="alertBar">⚠ HAZARDOUS AIR QUALITY DETECTED — TAKE PRECAUTIONS IMMEDIATELY</div>
+
+<main>
+
+  <!-- ── AQI GAUGE ── -->
+  <div class="panel aqi-panel">
+    <div class="panel-title">Air Quality Index</div>
+    <div class="gauge-wrap">
+      <canvas id="gaugeCanvas"></canvas>
+      <div class="gauge-center">
+        <div class="aqi-number" id="aqiNum">--</div>
+        <div class="aqi-label-text">AQI SCORE</div>
+      </div>
+    </div>
+    <div class="aqi-status-badge" id="aqiStatus">WAITING…</div>
+    <div class="aqi-bar-wrap">
+      <div class="aqi-bar-labels"><span>0</span><span>100</span><span>200</span><span>300</span><span>500</span></div>
+      <div class="aqi-bar-track">
+        <div class="aqi-bar-thumb" id="aqiThumb" style="left:0%"></div>
+      </div>
+    </div>
+
+    <!-- Health verdict block -->
+    <div class="health-indicator" id="healthBox">
+      <div class="health-face" id="healthFace">⏳</div>
+      <div class="health-text">
+        <div class="health-verdict" id="healthVerdict">Waiting for data…</div>
+        <div class="health-desc" id="healthDesc">Connecting to sensor…</div>
+        <span class="health-range" id="healthRange">AQI: --</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SENSOR CARDS ── -->
+  <div class="sensor-grid">
+    <div class="sensor-card">
+      <div class="sensor-icon">🌡</div>
+      <div class="sensor-name">Temperature</div>
+      <div class="sensor-value" id="tempVal">--</div>
+      <div class="sensor-unit">°C Celsius</div>
+    </div>
+    <div class="sensor-card">
+      <div class="sensor-icon">💧</div>
+      <div class="sensor-name">Humidity</div>
+      <div class="sensor-value" id="humVal">--</div>
+      <div class="sensor-unit">% Relative</div>
+    </div>
+    <div class="sensor-card">
+      <div class="sensor-icon">🌪</div>
+      <div class="sensor-name">Pressure</div>
+      <div class="sensor-value" id="presVal">--</div>
+      <div class="sensor-unit">hPa</div>
+    </div>
+    <div class="sensor-card">
+      <div class="sensor-icon">🌬</div>
+      <div class="sensor-name">CO₂</div>
+      <div class="sensor-value" id="co2Val">--</div>
+      <div class="sensor-unit">ppm</div>
+    </div>
+  </div>
+
+  <!-- ── LINE CHART ── -->
+  <div class="panel chart-panel">
+    <div class="panel-title">Real-time Trend</div>
+    <div class="chart-controls">
+      <button class="chart-btn active" onclick="switchChart('aqi',this)">AQI</button>
+      <button class="chart-btn" onclick="switchChart('temp',this)">Temp</button>
+      <button class="chart-btn" onclick="switchChart('hum',this)">Humidity</button>
+      <button class="chart-btn" onclick="switchChart('co2',this)">CO₂</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="lineChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM ROW ── -->
+  <div class="bottom-row">
+
+    <!-- Bar chart -->
+    <div class="panel" style="padding:20px">
+      <div class="panel-title">Sensor Snapshot</div>
+      <div style="height:200px; position:relative">
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div class="panel" style="padding:14px">
+      <div class="panel-title" style="margin-bottom:10px">Sensor Location</div>
+      <div id="map"></div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+// ═══════════════════════════════
+//  FIREBASE CONFIG
+// ═══════════════════════════════
 const firebaseConfig = {
   apiKey: "AIzaSyA0iPOuBP0ocEU9wp3Ravh3rid9dZhMTAY",
-  databaseURL:  "https://aqi-monitoring-system-947db-default-rtdb.firebaseio.com"
+  databaseURL: "https://aqi-monitoring-system-947db-default-rtdb.firebaseio.com"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// -------- CHART --------
-const chartData = {
-  labels: [],
-  datasets: [{
-    label: "AQI",
-    data: [],
-    borderColor: "cyan",
-    fill: false
-  }]
-};
+// ═══════════════════════════════
+//  CLOCK
+// ═══════════════════════════════
+function updateClock() {
+  document.getElementById('clockEl').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
 
-const chart = new Chart(document.getElementById("aqiChart"), {
-  type: "line",
-  data: chartData
-});
+// ═══════════════════════════════
+//  GAUGE CANVAS
+// ═══════════════════════════════
+const gaugeCanvas = document.getElementById('gaugeCanvas');
+const gCtx = gaugeCanvas.getContext('2d');
 
-function updateChart(aqi) {
-  chartData.labels.push(new Date().toLocaleTimeString());
-  chartData.datasets[0].data.push(aqi);
+function drawGauge(value) {
+  const w = gaugeCanvas.width  = gaugeCanvas.offsetWidth  * devicePixelRatio;
+  const h = gaugeCanvas.height = gaugeCanvas.offsetHeight * devicePixelRatio;
+  gCtx.clearRect(0, 0, w, h);
 
-  if (chartData.labels.length > 10) {
-    chartData.labels.shift();
-    chartData.datasets[0].data.shift();
-  }
+  const cx = w / 2, cy = h / 2 + h * .1;
+  const r  = Math.min(w, h) * .38;
 
-  chart.update();
+  const startAngle = Math.PI * .75;
+  const totalArc   = Math.PI * 1.5;
+  const pct = Math.min(value / 500, 1);
+  const endAngle = startAngle + totalArc * pct;
+
+  // Track
+  gCtx.beginPath();
+  gCtx.arc(cx, cy, r, startAngle, startAngle + totalArc);
+  gCtx.strokeStyle = '#1a3a5c';
+  gCtx.lineWidth   = w * .045;
+  gCtx.lineCap     = 'round';
+  gCtx.stroke();
+
+  // Filled arc (gradient)
+  const grad = gCtx.createLinearGradient(cx - r, cy, cx + r, cy);
+  grad.addColorStop(0,    '#00e676');
+  grad.addColorStop(.4,   '#ffea00');
+  grad.addColorStop(.65,  '#ff9100');
+  grad.addColorStop(1,    '#ff1744');
+
+  gCtx.beginPath();
+  gCtx.arc(cx, cy, r, startAngle, endAngle);
+  gCtx.strokeStyle = grad;
+  gCtx.lineWidth   = w * .045;
+  gCtx.lineCap     = 'round';
+  gCtx.stroke();
+
+  // Tip glow
+  const tipX = cx + r * Math.cos(endAngle);
+  const tipY = cy + r * Math.sin(endAngle);
+  const glow = gCtx.createRadialGradient(tipX, tipY, 0, tipX, tipY, w * .07);
+  glow.addColorStop(0, 'rgba(0,229,255,.8)');
+  glow.addColorStop(1, 'transparent');
+  gCtx.fillStyle = glow;
+  gCtx.beginPath();
+  gCtx.arc(tipX, tipY, w * .07, 0, Math.PI * 2);
+  gCtx.fill();
 }
 
-// -------- MAP --------
-const map = L.map('map').setView([16.7050, 74.2433], 15);
+drawGauge(0);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// ═══════════════════════════════
+//  AQI STATUS HELPER
+// ═══════════════════════════════
+function getStatus(v) {
+  if (v <  50)  return {
+    text: 'GOOD', color: '#00e676', bg: 'rgba(0,230,118,.12)',
+    face: '😊', verdict: '✅ Air Quality is GOOD',
+    desc: 'Air is clean and fresh. Safe for all outdoor activities.',
+    range: 'AQI 0–49 · Excellent'
+  };
+  if (v < 100)  return {
+    text: 'MODERATE', color: '#ffea00', bg: 'rgba(255,234,0,.12)',
+    face: '😐', verdict: '🟡 Air Quality is MODERATE',
+    desc: 'Acceptable quality. Sensitive individuals should limit prolonged exertion.',
+    range: 'AQI 50–99 · Acceptable'
+  };
+  if (v < 150)  return {
+    text: 'UNHEALTHY', color: '#ff9100', bg: 'rgba(255,145,0,.12)',
+    face: '😷', verdict: '⚠️ Air Quality is UNHEALTHY',
+    desc: 'Sensitive groups may experience effects. Reduce outdoor time.',
+    range: 'AQI 100–149 · Sensitive Groups'
+  };
+  if (v < 200)  return {
+    text: 'VERY BAD', color: '#ff6d00', bg: 'rgba(255,109,0,.12)',
+    face: '🤢', verdict: '🔶 Air Quality is VERY UNHEALTHY',
+    desc: 'Everyone may experience health effects. Avoid outdoor exertion.',
+    range: 'AQI 150–199 · Unhealthy'
+  };
+  if (v < 300)  return {
+    text: 'HAZARDOUS', color: '#ff1744', bg: 'rgba(255,23,68,.12)',
+    face: '☠️', verdict: '🔴 Air Quality is HAZARDOUS',
+    desc: 'Health alert! Everyone should avoid all outdoor activity immediately.',
+    range: 'AQI 200–299 · Hazardous'
+  };
+  return {
+    text: 'EXTREME', color: '#b71c1c', bg: 'rgba(183,28,28,.2)',
+    face: '🚨', verdict: '🚨 EXTREME DANGER — Stay Indoors!',
+    desc: 'Emergency conditions. Seal windows, wear respirator, seek shelter.',
+    range: 'AQI 300+ · Emergency'
+  };
+}
 
-const marker = L.marker([16.7050, 74.2433]).addTo(map);
+// ═══════════════════════════════
+//  LINE CHART
+// ═══════════════════════════════
+const MAX_POINTS = 20;
+const history = { aqi: [], temp: [], hum: [], co2: [], labels: [] };
+let activeKey = 'aqi';
 
-// -------- FIREBASE LIVE DATA --------
-db.ref("sensor_live").on("value", (snap) => {
-  const d = snap.val();
-
-  if (!d) return;
-
-  document.getElementById("aqi").innerText = d.aqi;
-  document.getElementById("temp").innerText = d.temperature + " °C";
-  document.getElementById("hum").innerText = d.humidity + " %";
-  document.getElementById("pres").innerText = d.pressure + " hPa";
-  document.getElementById("co2").innerText = d.co2 + " ppm";
-
-  // AQI Status
-  let statusText = "";
-  let statusClass = "";
-
-  if (d.aqi < 100) {
-    statusText = "GOOD";
-    statusClass = "good";
-  } else if (d.aqi < 200) {
-    statusText = "WARNING";
-    statusClass = "warning";
-  } else {
-    statusText = "DANGER";
-    statusClass = "danger";
+const lineCtx = document.getElementById('lineChart').getContext('2d');
+const lineChart = new Chart(lineCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'AQI',
+      data: [],
+      borderColor: '#00e5ff',
+      backgroundColor: 'rgba(0,229,255,.06)',
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: '#00e5ff',
+      fill: true,
+      tension: .4,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        grid: { color: 'rgba(255,255,255,.05)' },
+        ticks: { color: '#4a6080', font: { family: "'Share Tech Mono'" }, maxTicksLimit: 8 }
+      },
+      y: {
+        grid: { color: 'rgba(255,255,255,.05)' },
+        ticks: { color: '#4a6080', font: { family: "'Share Tech Mono'" } }
+      }
+    }
   }
-
-  const statusEl = document.getElementById("status");
-  statusEl.innerText = statusText;
-  statusEl.className = statusClass;
-
-  // AQI BAR
-  document.getElementById("aqiBar").value = d.aqi;
-
-  // ALERT
-  if (d.aqi > 200) {
-    document.getElementById("alertBox").style.display = "block";
-  } else {
-    document.getElementById("alertBox").style.display = "none";
-  }
-
-  // UPDATE CHART
-  updateChart(d.aqi);
-
-  // UPDATE MAP
-  marker.bindPopup("AQI: " + d.aqi).openPopup();
 });
 
-</script></body>
+function switchChart(key, btn) {
+  activeKey = key;
+  document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateLineChart();
+}
+
+function updateLineChart() {
+  const colors = { aqi:'#00e5ff', temp:'#ff9100', hum:'#00e676', co2:'#ff4d6d' };
+  const c = colors[activeKey];
+  lineChart.data.labels = [...history.labels];
+  lineChart.data.datasets[0].data = [...history[activeKey]];
+  lineChart.data.datasets[0].borderColor = c;
+  lineChart.data.datasets[0].backgroundColor = c + '10';
+  lineChart.data.datasets[0].pointBackgroundColor = c;
+  lineChart.update();
+}
+
+// ═══════════════════════════════
+//  BAR CHART
+// ═══════════════════════════════
+const barCtx = document.getElementById('barChart').getContext('2d');
+const barChart = new Chart(barCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Temp (°C)', 'Humidity (%)', 'CO₂ /10', 'AQI /5'],
+    datasets: [{
+      data: [0, 0, 0, 0],
+      backgroundColor: ['#ff9100cc','#00e676cc','#ff4d6dcc','#00e5ffcc'],
+      borderColor:     ['#ff9100','#00e676','#ff4d6d','#00e5ff'],
+      borderWidth: 1.5,
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 600 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#4a6080', font:{ family:"'Share Tech Mono'" } } },
+      y: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#4a6080', font:{ family:"'Share Tech Mono'" } }, beginAtZero: true }
+    }
+  }
+});
+
+// ═══════════════════════════════
+//  MAP
+// ═══════════════════════════════
+const map = L.map('map', { zoomControl: false }).setView([16.7050, 74.2433], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const marker = L.marker([16.7050, 74.2433]).addTo(map);
+
+// ═══════════════════════════════
+//  FIREBASE LISTENER
+// ═══════════════════════════════
+db.ref("sensor_live").on("value", snap => {
+  const d = snap.val();
+  if (!d) return;
+
+  const aqi  = +d.aqi  || 0;
+  const temp = +d.temperature || 0;
+  const hum  = +d.humidity   || 0;
+  const pres = +d.pressure   || 0;
+  const co2  = +d.co2        || 0;
+
+  // Cards
+  document.getElementById('aqiNum').textContent  = aqi;
+  document.getElementById('tempVal').textContent  = temp.toFixed(1);
+  document.getElementById('humVal').textContent   = hum.toFixed(1);
+  document.getElementById('presVal').textContent  = pres.toFixed(0);
+  document.getElementById('co2Val').textContent   = co2.toFixed(0);
+
+  // Status badge
+  const s = getStatus(aqi);
+  const badge = document.getElementById('aqiStatus');
+  badge.textContent   = s.text;
+  badge.style.color   = s.color;
+  badge.style.borderColor = s.color;
+  badge.style.background  = s.bg;
+  document.getElementById('aqiNum').style.color = s.color;
+
+  // Health indicator
+  document.getElementById('healthFace').textContent    = s.face;
+  document.getElementById('healthVerdict').textContent = s.verdict;
+  document.getElementById('healthVerdict').style.color = s.color;
+  document.getElementById('healthDesc').textContent    = s.desc;
+  document.getElementById('healthRange').textContent   = s.range;
+  const hBox = document.getElementById('healthBox');
+  hBox.style.borderColor  = s.color + '66';
+  hBox.style.background   = s.bg;
+
+  // Gauge
+  drawGauge(aqi);
+
+  // Progress thumb
+  document.getElementById('aqiThumb').style.left = Math.min(aqi / 500 * 100, 100) + '%';
+
+  // Alert
+  document.getElementById('alertBar').style.display = aqi > 200 ? 'block' : 'none';
+
+  // History
+  const t = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  history.labels.push(t);
+  history.aqi.push(aqi);
+  history.temp.push(temp);
+  history.hum.push(hum);
+  history.co2.push(co2);
+  if (history.labels.length > MAX_POINTS) {
+    ['labels','aqi','temp','hum','co2'].forEach(k => history[k].shift());
+  }
+
+  updateLineChart();
+
+  // Bar chart
+  barChart.data.datasets[0].data = [temp, hum, co2 / 10, aqi / 5];
+  barChart.update();
+
+  // Map
+  marker.bindPopup(`<b>AQI: ${aqi}</b><br>Temp: ${temp}°C | Hum: ${hum}%`).openPopup();
+});
+</script>
+</body>
 </html>
