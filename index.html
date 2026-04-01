@@ -1,0 +1,179 @@
+<!DOCTYPE html><html>
+<head>
+  <title> AQI Monitoring using IoT & Embedded system Dashboard</title>  <!-- Firebase -->  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>  <!-- Chart -->  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <!-- Map -->  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
+      text-align: center;
+    }
+
+    h1 {
+      padding: 15px;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .card {
+      background: #1e293b;
+      margin: 10px;
+      padding: 20px;
+      border-radius: 15px;
+      width: 180px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+
+    .aqi-card {
+      width: 260px;
+      font-size: 22px;
+    }
+
+    .value {
+      font-size: 26px;
+      font-weight: bold;
+    }
+
+    .good { color: #22c55e; }
+    .warning { color: #facc15; }
+    .danger { color: #ef4444; }
+
+    #alertBox {
+      display: none;
+      background: red;
+      padding: 10px;
+      margin: 10px;
+      font-weight: bold;
+    }
+
+    canvas {
+      max-width: 90%;
+      margin-top: 20px;
+    }
+
+    #map {
+      height: 300px;
+      margin: 20px;
+      border-radius: 10px;
+    }
+
+  </style></head><body><h1>🌍 AQI Monitoring using IoT & Embedded system  Dashboard</h1><div id="alertBox">⚠️ Air Quality Dangerous!</div><div class="container">  <div class="card aqi-card">
+    <h2>AQI</h2>
+    <div id="aqi" class="value">--</div>
+    <div id="status">--</div>
+    <progress id="aqiBar" value="0" max="500"></progress>
+  </div>  <div class="card">
+    <h3>🌡 Temp</h3>
+    <div id="temp" class="value">--</div>
+  </div>  <div class="card">
+    <h3>💧 Humidity</h3>
+    <div id="hum" class="value">--</div>
+  </div>  <div class="card">
+    <h3>🌪 Pressure</h3>
+    <div id="pres" class="value">--</div>
+  </div>  <div class="card">
+    <h3>🌬 CO₂</h3>
+    <div id="co2" class="value">--</div>
+  </div></div><!-- Chart --><canvas id="aqiChart"></canvas>
+
+<!-- Map --><div id="map"></div><script>
+
+// 🔥 PASTE YOUR FIREBASE CONFIG HERE
+const firebaseConfig = {
+  apiKey: "AIzaSyA0iPOuBP0ocEU9wp3Ravh3rid9dZhMTAY",
+  databaseURL:  "https://aqi-monitoring-system-947db-default-rtdb.firebaseio.com"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// -------- CHART --------
+const chartData = {
+  labels: [],
+  datasets: [{
+    label: "AQI",
+    data: [],
+    borderColor: "cyan",
+    fill: false
+  }]
+};
+
+const chart = new Chart(document.getElementById("aqiChart"), {
+  type: "line",
+  data: chartData
+});
+
+function updateChart(aqi) {
+  chartData.labels.push(new Date().toLocaleTimeString());
+  chartData.datasets[0].data.push(aqi);
+
+  if (chartData.labels.length > 10) {
+    chartData.labels.shift();
+    chartData.datasets[0].data.shift();
+  }
+
+  chart.update();
+}
+
+// -------- MAP --------
+const map = L.map('map').setView([16.7050, 74.2433], 15);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+const marker = L.marker([16.7050, 74.2433]).addTo(map);
+
+// -------- FIREBASE LIVE DATA --------
+db.ref("sensor_live").on("value", (snap) => {
+  const d = snap.val();
+
+  if (!d) return;
+
+  document.getElementById("aqi").innerText = d.aqi;
+  document.getElementById("temp").innerText = d.temperature + " °C";
+  document.getElementById("hum").innerText = d.humidity + " %";
+  document.getElementById("pres").innerText = d.pressure + " hPa";
+  document.getElementById("co2").innerText = d.co2 + " ppm";
+
+  // AQI Status
+  let statusText = "";
+  let statusClass = "";
+
+  if (d.aqi < 100) {
+    statusText = "GOOD";
+    statusClass = "good";
+  } else if (d.aqi < 200) {
+    statusText = "WARNING";
+    statusClass = "warning";
+  } else {
+    statusText = "DANGER";
+    statusClass = "danger";
+  }
+
+  const statusEl = document.getElementById("status");
+  statusEl.innerText = statusText;
+  statusEl.className = statusClass;
+
+  // AQI BAR
+  document.getElementById("aqiBar").value = d.aqi;
+
+  // ALERT
+  if (d.aqi > 200) {
+    document.getElementById("alertBox").style.display = "block";
+  } else {
+    document.getElementById("alertBox").style.display = "none";
+  }
+
+  // UPDATE CHART
+  updateChart(d.aqi);
+
+  // UPDATE MAP
+  marker.bindPopup("AQI: " + d.aqi).openPopup();
+});
+
+</script></body>
+</html>
